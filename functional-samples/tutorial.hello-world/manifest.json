@@ -1,10 +1,179 @@
+// manifest.json
 {
-  "name": "Hello Extensions",
-  "description": "Base Level Extension",
-  "version": "1.0",
   "manifest_version": 3,
+  "name": "Split Tab Extension",
+  "version": "1.0",
+  "description": "Enables hierarchical tab splitting within Chrome",
+  "permissions": [
+    "tabs",
+    "activeTab",
+    "scripting"
+  ],
   "action": {
-    "default_popup": "hello.html",
-    "default_icon": "hello_extensions.png"
+    "default_title": "Split Tab"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [{
+    "matches": ["<all_urls>"],
+    "js": ["content.js"],
+    "css": ["styles.css"]
+  }]
+}
+
+// background.js
+chrome.action.onClicked.addListener((tab) => {
+  chrome.scripting.executeScript({
+    target: { tabId: tab.id },
+    function: initializeSplitView
+  });
+});
+
+// content.js
+function initializeSplitView() {
+  // Prepreči večkratno inicializacijo
+  if (document.getElementById('split-container')) return;
+
+  // Shrani originalno vsebino
+  const originalContent = document.body.innerHTML;
+  
+  // Ustvari container za razdeljeni pogled
+  const splitContainer = document.createElement('div');
+  splitContainer.id = 'split-container';
+  
+  // Zgornje okno
+  const topWindow = document.createElement('div');
+  topWindow.id = 'top-window';
+  topWindow.className = 'split-window';
+  
+  // Spodnje okno
+  const bottomWindow = document.createElement('div');
+  bottomWindow.id = 'bottom-window';
+  bottomWindow.className = 'split-window';
+  
+  // Ločilna vrstica za spreminjanje velikosti
+  const resizer = document.createElement('div');
+  resizer.id = 'resizer';
+  
+  // Nastavi vsebino
+  topWindow.innerHTML = originalContent;
+  bottomWindow.innerHTML = originalContent;
+  
+  // Sestavi strukturo
+  splitContainer.appendChild(topWindow);
+  splitContainer.appendChild(resizer);
+  splitContainer.appendChild(bottomWindow);
+  
+  // Počisti in nastavi novo vsebino
+  document.body.innerHTML = '';
+  document.body.appendChild(splitContainer);
+  
+  // Inicializiraj funkcionalnost spreminjanja velikosti
+  initializeResizer();
+  
+  // Shrani stanje v local storage
+  saveSplitState();
+}
+
+function initializeResizer() {
+  const resizer = document.getElementById('resizer');
+  let isResizing = false;
+  
+  resizer.addEventListener('mousedown', (e) => {
+    isResizing = true;
+    document.addEventListener('mousemove', handleResize);
+    document.addEventListener('mouseup', stopResize);
+  });
+  
+  function handleResize(e) {
+    if (!isResizing) return;
+    
+    const container = document.getElementById('split-container');
+    const containerRect = container.getBoundingClientRect();
+    const percentage = ((e.clientY - containerRect.top) / containerRect.height) * 100;
+    
+    // Omejitev razpona 20%-80%
+    if (percentage >= 20 && percentage <= 80) {
+      document.getElementById('top-window').style.height = `${percentage}%`;
+      document.getElementById('bottom-window').style.height = `${100 - percentage}%`;
+    }
   }
+  
+  function stopResize() {
+    isResizing = false;
+    document.removeEventListener('mousemove', handleResize);
+    saveSplitState();
+  }
+}
+
+function saveSplitState() {
+  const topWindow = document.getElementById('top-window');
+  const bottomWindow = document.getElementById('bottom-window');
+  
+  const state = {
+    isSplit: true,
+    topHeight: topWindow.style.height,
+    bottomHeight: bottomWindow.style.height,
+    url: window.location.href
+  };
+  
+  chrome.storage.local.set({ splitState: state });
+}
+
+// styles.css
+#split-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.split-window {
+  width: 100%;
+  height: 50%;
+  overflow-y: auto;
+  position: relative;
+}
+
+#resizer {
+  width: 100%;
+  height: 6px;
+  background: #ddd;
+  cursor: row-resize;
+  position: relative;
+}
+
+#resizer:hover {
+  background: #bbb;
+}
+
+#top-window {
+  border-bottom: 1px solid #ccc;
+}
+
+#bottom-window {
+  border-top: 1px solid #ccc;
+}
+
+/* Dodatni stilski popravki za boljšo uporabniško izkušnjo */
+.split-window::-webkit-scrollbar {
+  width: 8px;
+}
+
+.split-window::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+.split-window::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 4px;
+}
+
+.split-window::-webkit-scrollbar-thumb:hover {
+  background: #555;
 }
